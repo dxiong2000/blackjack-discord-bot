@@ -13,6 +13,40 @@ client = discord.Client(intents=intents)
 conn = sqlite3.connect('blackjack.db')
 c = conn.cursor()
 
+# returns account embedded message
+def getAccountEmbed(name, tokens):
+    embed = discord.Embed(
+        title = f"{name}'s Account",
+        colour = discord.Colour.orange()
+    )
+    embed.add_field(name='Account Balance', value=f'\U0001FA99 {tokens}', inline=False)
+    embed.set_footer(text='Type !help for a list of commands.')
+    return embed
+
+# returns error embedded message
+def getErrorEmbed(desc):
+    embed = discord.Embed(
+        title = 'Blackjack Error',
+        description = desc,
+        colour = discord.Colour.red()
+    )
+    embed.set_footer(text='Type !help for a list of commands.')
+    return embed
+
+# returns round embedded message
+def getRoundEmbed(playerHand, dealerHand):
+    embed = discord.Embed(
+        title = 'Blackjack!',
+        colour = discord.Colour.green()
+    )
+    embed.add_field(name='Your Hand', value=f'{playerHand[0]} - {playerHand[1]}', inline=True)
+    embed.add_field(name="Dealer's Hand", value=f'{dealerHand[0]} - \U0001F0CF', inline=True)
+    embed.add_field(name='Next Move', value=f'!hit or !stand', inline=False)
+    embed.set_footer(text='Type !help for a list of commands.')
+    return embed
+
+userStates = {}
+
 @client.event
 async def on_ready():
     print(f'Logged on as {client.user}!')
@@ -36,34 +70,27 @@ async def on_message(message):
             # insert new user row into database, default 1000 tokens
             c.execute('INSERT INTO users VALUES (?, ?, ?, ?, ?)', (user.id, user.name, user.discriminator, 1000, user.guild.id,))
             
-            # create embedded message
-            embed = discord.Embed(
-                title = 'Blackjack Account',
-                colour = discord.Colour.orange()
-            )
-            embed.add_field(name='User \U0001F9CD', value=user.mention, inline=False)
-            embed.add_field(name='Account Balance \U0001F4B0', value='\U0001FA99 1000', inline=False)
-            embed.set_footer(text='Type !help for a list of commands.')
-            await message.channel.send('New account created!\n', embed=embed)
-            
-            # commit insert to database
+            await message.channel.send(f'{user.mention} New account created!\n', embed=getAccountEmbed(user.name, 1000))
             conn.commit()
             return
         else:
-            embed = discord.Embed(
-                title = 'Blackjack Account',
-                colour = discord.Colour.orange()
-            )
-            embed.add_field(name='User \U0001F9CD', value=user.mention, inline=False)
-            embed.add_field(name='Account Balance \U0001F4B0', value=f'\U0001FA99 {rows[0][0]}', inline=False)
-            embed.set_footer(text='Type !help for a list of commands.')
-            await message.channel.send('You already have an account!\n', embed=embed)
+            await message.channel.send(f'{user.mention} You already have an account!\n')
+            return
+    elif msg == '!balance': # get account balance
+        c.execute('SELECT tokens FROM users WHERE userID = ? AND guildID = ?', (user.id, user.guild.id,))
+        rows = c.fetchall()
+        
+        # user has not created an account
+        if len(rows) == 0: 
+            await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('You do not have an account! Create an account using !create.'))
+            return
+        else:
+            await message.channel.send(f'{user.mention}\n', embed=getAccountEmbed(user.name, rows[0][0]))
             return
     elif msg.startswith('!play'):
         msg = msg[5:]
         if len(msg) > 0 and msg[1:].isnumeric():
-            msg = msg[1:]
-            bet = int(msg)
+            bet = int(msg[1:])
             
             '''
             Each user has their own game state
@@ -103,28 +130,17 @@ async def on_message(message):
             cardIdx = random.randint(0, len(cardsArr)-1)
             dealerHand.append(cardsArr[cardIdx])
             cardsArr.pop(cardIdx)
-            
-            embed = discord.Embed(
-                title = 'Blackjack!',
-                colour = discord.Colour.green()
-            )
-            embed.add_field(name='User \U0001F9CD', value=user.mention, inline=False)
-            embed.add_field(name='Your Hand', value=f'{playerHand[0]} - {playerHand[1]}', inline=False)
-            embed.add_field(name="Dealer's Hand", value=f'{dealerHand[0]} - \U0001F0CF', inline=True)
-            embed.add_field(name='Next Move', value=f'!hit or !stand', inline=False)
-            embed.set_footer(text='Type !help for a list of commands.')
-            await message.channel.send(embed=embed)
+
+            await message.channel.send(f'{user.mention}\n', embed=getRoundEmbed(playerHand, dealerHand))
             print(message.author.name, playerHand, dealerHand, len(cardsArr))
             return
         else:
-            embed = discord.Embed(
-                title = 'Blackjack Error',
-                description = 'Wrong usage of !play.\nCorrect usage: !play <bet amount>.',
-                colour = discord.Colour.red()
-            )
-            embed.set_footer(text='Type !help for a list of commands.')
-            await message.channel.send(embed=embed)
+            await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !play.\nCorrect usage: !play <bet amount>.'))
             return
+    elif msg == '!hit':
+        pass
+    elif msg == '!stand':
+        pass
     elif msg == '!help':
         embed = discord.Embed(
             title = 'Blackjack Help',
@@ -132,7 +148,7 @@ async def on_message(message):
         )
         embed.add_field(name='!create', value='Create new blackjack account.', inline=False)
         embed.add_field(name='!play <bet amount>', value='Start a round of blackjack.')
-        await message.channel.send(embed=embed)
+        await message.channel.send(f'{user.mention}\n', embed=embed)
         return
 
 client.run(bot_token)
