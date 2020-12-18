@@ -45,6 +45,7 @@ def getRoundEmbed(playerHand, dealerHand):
     embed.set_footer(text='Type !help for a list of commands.')
     return embed
 
+# (userID, guildID): {state: '', cardArr: [], playerHand: [], dealerHand: [], bet: int}
 userStates = {}
 
 @client.event
@@ -116,7 +117,6 @@ async def on_message(message):
                 card += 1
                 if card == 14:
                     card = 1
-            #print(card_mapping)
             
             playerHand = []
             cardIdx = random.randint(0, len(cardsArr)-1)
@@ -132,7 +132,7 @@ async def on_message(message):
             cardsArr.pop(cardIdx)
 
             await message.channel.send(f'{user.mention}\n', embed=getRoundEmbed(playerHand, dealerHand))
-            print(message.author.name, playerHand, dealerHand, len(cardsArr))
+            # print(message.author.name, playerHand, dealerHand, len(cardsArr))
             return
         else:
             await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !play.\nCorrect usage: !play <bet amount>.'))
