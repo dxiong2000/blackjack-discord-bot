@@ -18,12 +18,15 @@ wins = 0
 total = 0
 
 # returns account embedded message
-def getAccountEmbed(name, tokens):
+def getAccountEmbed(name, tokens, wins, losses, ties):
     embed = discord.Embed(
         title = f"{name}'s Account",
         colour = discord.Colour.orange()
     )
     embed.add_field(name='Account Balance', value=f'\U0001FA99 {tokens}', inline=False)
+    embed.add_field(name='Wins', value=f'{wins}', inline=True)
+    embed.add_field(name='Losses', value=f'{losses}', inline=True)
+    embed.add_field(name='Ties', value=f'{ties}', inline=True)
     embed.set_footer(text='Type !help for a list of commands.')
     return embed
 
@@ -135,11 +138,27 @@ def getHandSum(hand):
             numAces += 1
         else:
             count += card
-    for _ in range(numAces):
+    if numAces == 1:
         if count + 11 > 21:
             count += 1
         else:
             count += 11
+    elif numAces == 2:
+        if count + 12 > 21:
+            count += 2
+        else:
+            count += 12
+    elif numAces == 3:
+        if count + 13 > 21:
+            count += 3
+        else:
+            count += 13
+    elif numAces == 4:
+        if count + 14 > 21:
+            count += 4
+        else:
+            count += 14
+            
     return count
 
 # (userID, guildID): {cardArr: [], playerHand: [], dealerHand: [], bet: int}
@@ -171,18 +190,18 @@ async def on_message(message):
         if len(rows) == 0: 
             now = datetime.utcnow()
             # insert new user row into database, default 1000 tokens
-            c.execute('INSERT INTO users VALUES (?, ?, ?, ?, ?, ?)', (user.id, user.name, user.discriminator, STARTING_TOKENS, user.guild.id, now,))
+            c.execute('INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (user.id, user.name, user.discriminator, STARTING_TOKENS, user.guild.id, now, 0, 0, 0,))
             
-            await message.channel.send(f'{user.mention} New account created!\n', embed=getAccountEmbed(user.name, STARTING_TOKENS))
+            await message.channel.send(f'{user.mention} New account created!\n', embed=getAccountEmbed(user.name, STARTING_TOKENS, 0, 0, 0))
             conn.commit()
             return
         else:
             await message.channel.send(f'{user.mention} You already have an account!\n')
             return
-    elif msg.startswith('!balance'): # get account balance
-        msg = msg[8:]
-        if len(msg) == 0: # no user specified, get balance of user who issued command
-            c.execute('SELECT tokens FROM users WHERE userID = ? AND guildID = ?', (user.id, user.guild.id,))
+    elif msg.startswith('!stats'): # get account stats
+        msg = msg[6:]
+        if len(message.mentions) == 0: # no user specified, get balance of user who issued command
+            c.execute('SELECT tokens, wins, losses, ties FROM users WHERE userID = ? AND guildID = ?', (user.id, user.guild.id,))
             rows = c.fetchall()
             
             # user has not created an account
@@ -190,30 +209,25 @@ async def on_message(message):
                 await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('You do not have an account! Create an account using !create.'))
                 return
             else:
-                await message.channel.send(f'{user.mention}\n', embed=getAccountEmbed(user.name, rows[0][0]))
+                await message.channel.send(f'{user.mention}\n', embed=getAccountEmbed(user.name, rows[0][0], rows[0][1], rows[0][2], rows[0][3]))
                 return
-        elif len(msg[1:]) > 0 and msg[0] == ' ': # user specified
-            msg = msg[1:]
-            if msg.count('#') != 1:
-                await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !balance.\nCorrect usage: !balance [username#XXXX]'))
-                return
-            msg = msg.split('#')
-            if not msg[1].isnumeric():
-                await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !balance.\nCorrect usage: !balance [username#XXXX]'))
+        elif len(message.mentions) == 1: # user specified
+            if msg[0] != ' ':
+                await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !stats.\nCorrect usage: !stats @user'))
                 return
                 
-            c.execute('SELECT tokens FROM users WHERE name = ? AND discriminator = ? AND guildID = ?', (msg[0], msg[1], user.guild.id,))
+            c.execute('SELECT tokens, wins, losses, ties FROM users WHERE userID = ? AND guildID = ?', (message.mentions[0].id, user.guild.id,))
             rows = c.fetchall()
             
             # user has not created an account
             if len(rows) == 0: 
-                await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed(f'User {msg[0]}#{msg[1]} does not have an account!'))
+                await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed(f'User {message.mentions[0].name} does not have an account!'))
                 return
             else:
-                await message.channel.send(f'{user.mention}\n', embed=getAccountEmbed(f'{msg[0]}#{msg[1]}', rows[0][0]))
+                await message.channel.send(f'{user.mention}\n', embed=getAccountEmbed(f'{message.mentions[0].name}', rows[0][0], rows[0][1], rows[0][2], rows[0][3]))
                 return
         else:
-            await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !balance.\nCorrect usage: !balance [username#XXXX]'))
+            await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !stats.\nCorrect usage: !stats @user'))
             return
     elif msg.startswith('!play'):
         '''
@@ -301,7 +315,7 @@ async def on_message(message):
             # player wins off the bat
             if getHandSum(playerHand) == 21:
                 # update player balance in db
-                c.execute('UPDATE users SET tokens = tokens + ? WHERE userID = ? AND guildID = ?', (bet, userID, guildID))
+                c.execute('UPDATE users SET tokens = tokens + ?, wins = wins + 1 WHERE userID = ? AND guildID = ?', (bet, userID, guildID))
                 conn.commit()
                 
                 await message.channel.send(f'{user.mention}\n', embed=getWinEmbed(bet, bet + balance, playerHand, dealerHand))
@@ -346,7 +360,7 @@ async def on_message(message):
             rows = c.fetchall()
             
             # update player balance in db
-            c.execute('UPDATE users SET tokens = tokens + ? WHERE userID = ? AND guildID = ?', (state['bet'], userID, guildID))
+            c.execute('UPDATE users SET tokens = tokens + ?, wins = wins + 1 WHERE userID = ? AND guildID = ?', (state['bet'], userID, guildID))
             conn.commit()
             
             await message.channel.send(f'{user.mention}\n', embed=getWinEmbed(state['bet'], state['bet'] + rows[0][0], state['playerHand'], state['dealerHand']))
@@ -364,7 +378,7 @@ async def on_message(message):
                 balance = rows[0][0] - state['bet']
             
             # update player balance in db
-            c.execute('UPDATE users SET tokens = ? WHERE userID = ? AND guildID = ?', (balance, userID, guildID))
+            c.execute('UPDATE users SET tokens = ?, losses = losses + 1 WHERE userID = ? AND guildID = ?', (balance, userID, guildID))
             conn.commit()
             
             await message.channel.send(f'{user.mention}\n', embed=getLoseEmbed(state['bet'], balance, state['playerHand'], state['dealerHand']))
@@ -404,7 +418,7 @@ async def on_message(message):
         if dealerHandSum > 21 or dealerHandSum < playerHandSum:
             # wins += 1
             # update player balance in db
-            c.execute('UPDATE users SET tokens = tokens + ? WHERE userID = ? AND guildID = ?', (state['bet'], userID, guildID))
+            c.execute('UPDATE users SET tokens = tokens + ?, wins = wins + 1 WHERE userID = ? AND guildID = ?', (state['bet'], userID, guildID))
             conn.commit()
             
             await message.channel.send(f'{user.mention}\n', embed=getWinEmbed(state['bet'], state['bet'] + rows[0][0], state['playerHand'], state['dealerHand']))
@@ -414,6 +428,9 @@ async def on_message(message):
             return
         elif dealerHandSum == playerHandSum: # tie, player doesn't lose money
             await message.channel.send(f'{user.mention}\n', embed=getDrawEmbed(rows[0][0], state['playerHand'], state['dealerHand']))
+            
+            c.execute('UPDATE users SET ties = ties + 1 WHERE userID = ? AND guildID = ?', (userID, guildID))
+            conn.commit()
             
             # when a player is done with a game, delete player state from userStates
             del userStates[(userID, guildID)]
@@ -426,7 +443,7 @@ async def on_message(message):
                 balance = rows[0][0] - state['bet']
                 
             # update player balance in db
-            c.execute('UPDATE users SET tokens = ? WHERE userID = ? AND guildID = ?', (balance, userID, guildID))
+            c.execute('UPDATE users SET tokens = ?, losses = losses + 1 WHERE userID = ? AND guildID = ?', (balance, userID, guildID))
             conn.commit()
             
             await message.channel.send(f'{user.mention}\n', embed=getLoseEmbed(state['bet'], balance, state['playerHand'], state['dealerHand']))
@@ -446,7 +463,7 @@ async def on_message(message):
         else:
             await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed("You aren't my master!"))
             return
-    elif msg == '!leaderboard':
+    elif msg == '!leaderboard' or msg == '!top' or msg == '!lb':
         # print(wins/total)
         guildID = user.guild.id
         
@@ -483,8 +500,8 @@ async def on_message(message):
         guildID = user.guild.id
         
         tokenized = msg.split(' ')
-        if len(tokenized) != 3 or not tokenized[2].isnumeric() or tokenized[1].count('#') != 1:
-            await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !give.\nCorrect usage: !give <username#XXXX> <tokens>.'))
+        if len(tokenized) != 3 or not tokenized[2].isnumeric() or len(message.mentions) != 1:
+            await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('Wrong usage of !give.\nCorrect usage: !give @user <tokens>.'))
             return
         else:
             # Player must have account first
@@ -494,11 +511,10 @@ async def on_message(message):
                 await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed('You do not have an account! Create an account using !create.'))
                 return
             userTokens = rows[0][0]
-            name = tokenized[1].split('#')
             tokens = int(tokenized[2])
             
             # beneficiary doesn't have account
-            c.execute('SELECT tokens FROM users WHERE name = ? AND discriminator = ? AND guildID = ?', (name[0], name[1], guildID,))
+            c.execute('SELECT tokens FROM users WHERE userID = ? AND guildID = ?', (message.mentions[0].id, guildID,))
             rows = c.fetchall()
             if len(rows) == 0:
                 await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed("The person you are sending money to doesn't have an account."))
@@ -511,10 +527,10 @@ async def on_message(message):
             c.execute('UPDATE users SET tokens = tokens - ? WHERE userID = ? AND guildID = ?', (tokens, userID, guildID,))
             conn.commit()
             
-            c.execute('UPDATE users SET tokens = tokens + ? WHERE name = ? AND discriminator = ? AND guildID = ?', (tokens, name[0], name[1], guildID,))
+            c.execute('UPDATE users SET tokens = tokens + ? WHERE userID = ? AND guildID = ?', (tokens, message.mentions[0].id, guildID,))
             conn.commit()
             
-            await message.channel.send(f'{user.mention} You gave {tokens} tokens to {name[0]}#{name[1]}')
+            await message.channel.send(f'{user.mention} You gave {tokens} tokens to {message.mentions[0].name}')
             return
         
     elif msg == '!job':
@@ -537,7 +553,10 @@ async def on_message(message):
             await message.channel.send(f'{user.mention} You got 500 tokens!')
             return
         else:
-            await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed("Please wait an hour between each !job command."))
+            nextJob = datetime.strptime(lastJob, '%Y-%m-%d %H:%M:%S.%f') + timedelta(hours=1)
+            mins = nextJob - now
+            mins = divmod(mins.total_seconds(), 60)
+            await message.channel.send(f'{user.mention}\n', embed=getErrorEmbed(f"You can use !job in {int(mins[0])} minutes {int(mins[1])} seconds."))
             return 
     elif msg == '!help':
         embed = discord.Embed(
@@ -546,9 +565,9 @@ async def on_message(message):
         )
         embed.add_field(name='!create', value='Create new blackjack account.', inline=False)
         embed.add_field(name='!play <bet amount>', value='Start a round of blackjack.', inline=False)
-        embed.add_field(name='!balance\n!balance <username#XXXX>', value="View your or someone else's balance.", inline=False)
+        embed.add_field(name='!stats\n!stats @user', value="View your or someone else's account stats.", inline=False)
         embed.add_field(name='!job', value="Get hourly tokens!", inline=False)
-        embed.add_field(name='!give <username#XXXX> <tokens>', value="Transfer tokens from your account to someone else.", inline=False)
+        embed.add_field(name='!give @user <tokens>', value="Transfer tokens from your account to someone else.", inline=False)
         embed.add_field(name='!leaderboard', value="See who's the richest!", inline=False)
         embed.add_field(name='!drink', value='For when you need to drink the losses away.', inline=False)
         await message.channel.send(f'{user.mention}\n', embed=embed)
@@ -569,12 +588,3 @@ async def on_message(message):
 
 client.run(bot_token)
 c.close()
-
-'''
-TODO
-DONE - !balance <user> check balance of specified user
-DONE - !leaderboard
-!job for daily tokens
-!give <user> <tokens>
-Store tokens as string?
-'''
