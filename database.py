@@ -9,6 +9,10 @@ c.execute('''CREATE TABLE users(
             discriminator text,
             tokens integer,
             guildID text,
+            lastJob text,
+            wins integer,
+            losses integer,
+            ties integer,
             PRIMARY KEY (userID, guildID))''')
 
 conn.commit()
