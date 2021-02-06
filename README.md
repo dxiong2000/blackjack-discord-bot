@@ -9,8 +9,8 @@ Discord bot that lets users play blackjack!
 - Win/Loss/Tie statistics
 
 ## Usage
-Invite bot with this link: https://discord.com/api/oauth2/authorize?client_id=789302578890276906&permissions=523344&scope=bot
+1. Invite bot with this link: https://discord.com/api/oauth2/authorize?client_id=789302578890276906&permissions=523344&scope=bot
 
-Create text channel named 'blackjack'. Make sure no other bots have permissions in this channel.
+2. Create text channel named 'blackjack'. Make sure no other bots have permissions in this channel.
 
-Type !create in the blackjack channel to create your account!
+3. Type !create in the blackjack channel to create your account!
