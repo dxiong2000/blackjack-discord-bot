@@ -13,6 +13,8 @@ c.execute('''CREATE TABLE users(
             wins integer,
             losses integer,
             ties integer,
+            amountWon integer,
+            amountLost integer,
             PRIMARY KEY (userID, guildID))''')
 
 conn.commit()
